@@ -1,7 +1,7 @@
 ---
 title: "Power and Sample Size Planning"
 subtitle: "PSYC 201A, Simulation Lab 4"
-author: "Your name here"
+author: "Sarah Segall"
 date: today
 format:
   html:
@@ -55,22 +55,22 @@ Before you touch any code, guess the power of each of these studies. Type your g
 
 | Test | Effect | Total N | Your guess | Power from `pwr` |
 |---|---|---|---|---|
-| Two-group t-test | d = .5 | 24 | | |
-| Two-group t-test | d = .8 | 36 | | |
-| Two-group t-test | d = .3 | 120 | | |
-| Correlation | r = .5 | 36 | | |
-| Correlation | r = .3 | 80 | | |
+| Two-group t-test | d = .5 | 24 | .30 | 0.22 |
+| Two-group t-test | d = .8 | 36 | .70 | 0.65 |
+| Two-group t-test | d = .3 | 120 | .35 | 0.37 |
+| Correlation | r = .5 | 36 | .40 | 0.59 |
+| Correlation | r = .3 | 80 | .30 | 0.48 |
 
 Now check them. **Watch out:** in `pwr.t.test()`, `n` means participants *per group*, not the total. This is the most common way to get a power analysis wrong, in `pwr` and in G\*Power. In `pwr.r.test()`, `n` is just the number of people.
 
 To do: Fill in each `___`, then fill in the last column of the table.
 
 ```{r}
-pwr.t.test(n = ___, d = 0.5, sig.level = .05)$power
-pwr.t.test(n = ___, d = ___, sig.level = .05)$power
-pwr.t.test(n = ___, d = ___, sig.level = .05)$power
-pwr.r.test(n = ___, r = 0.5, sig.level = .05)$power
-pwr.r.test(n = ___, r = ___, sig.level = .05)$power
+pwr.t.test(n = 12, d = 0.5, sig.level = .05)$power
+pwr.t.test(n = 18, d = 0.8, sig.level = .05)$power
+pwr.t.test(n = 60, d = 0.3, sig.level = .05)$power
+pwr.r.test(n = 18, r = 0.5, sig.level = .05)$power
+pwr.r.test(n = 40, r = 0.3, sig.level = .05)$power
 ```
 
 Power depends on four numbers: `n`, the effect size, `sig.level`, and `power`. Give `pwr` any three and it solves for the fourth. This is the classic **a priori power analysis**, done before you collect any data: leave `n` out, and set `power`.
@@ -78,8 +78,8 @@ Power depends on four numbers: `n`, the effect size, `sig.level`, and `power`. G
 To do: How many participants, in total, do you need for 80% power to detect d = .5? What about d = .3? Round up, because you can't run part of a person, and remember that `n` is per group.
 
 ```{r}
-n_d5 <- pwr.t.test(d = 0.5, power = ___, sig.level = .05)$n
-n_d3 <- pwr.t.test(d = ___, power = .8, sig.level = .05)$n
+n_d5 <- pwr.t.test(d = 0.5, power = .8, sig.level = .05)$n
+n_d3 <- pwr.t.test(d = 0.3, power = .8, sig.level = .05)$n
 
 ceiling(n_d5) * 2 # total N
 ceiling(n_d3) * 2
@@ -120,8 +120,8 @@ To do: Fill in the blanks to compute power at each sample size both ways, using 
 set.seed(2)
 
 power_check <- tibble(n_total = seq(10, 100, by = 10)) |>
-  mutate(simulated = map_dbl(n_total, \(n) estimate_power(n, delta = ___)),
-         formula = map_dbl(n_total, \(n) pwr.t.test(n = ___, d = ___)$power))
+  mutate(simulated = map_dbl(n_total, \(n) estimate_power(n, delta = 1)),
+         formula = map_dbl(n_total, \(n) pwr.t.test(n = n/2, d = .8)$power))
 
 power_check
 ```
@@ -137,6 +137,7 @@ power_check |>
 ```
 
 To do: Do they agree? If there is a gap, with the dots a little below the line, why might that be? (Hint: look at what `make_tea_data()` does to the ratings. What does `pwr` assume about them?)
+> HELP
 
 # Part 3: Why you shouldn't power on the published effect
 
@@ -172,12 +173,12 @@ To do: Add a column `published` that is `TRUE` when `p < .05` and `d_hat > 0`. T
 
 ```{r}
 literature <- literature |>
-  mutate(published = ___)
+  mutate(published = p < .05 & d_hat > 0)
 
 literature |>
   group_by(published) |>
   summarize(n_studies = n(),
-            mean_d = ___)
+            mean_d = mean(d_hat))
 
 mean(literature$d_hat) # all studies
 ```
@@ -192,6 +193,19 @@ literature |>
 ```
 
 To do: What percent of studies got published, and what does that tell you about the power of these studies? What is the average published effect, compared to the truth? (Hint: divide `n_studies` for the published row by 5,000, and compare it with `pwr.t.test(n = 20, d = 0.3)$power`.)
+```{r}
+literature |>
+     group_by(published) |>
+     summarize(n_studies = n(),
+               mean_d = mean(d_hat))
+
+print(768/5000)
+
+print(pwr.t.test(n = 20, d = 0.3)$power)
+
+# Both outputs are slightly different. First is 0.1536 and second is 0.1523.
+```
+
 
 Now you read one of those published papers and plan a replication with 80% power, using its effect size. `n_for_80()` does the a priori calculation.
 
@@ -209,9 +223,12 @@ To do: For every published study, work out the planned sample size, then the pow
 replications <- literature |>
   filter(published) |>
   mutate(planned_n = map_dbl(d_hat, n_for_80),
-         actual_power = map_dbl(planned_n, \(n) pwr.t.test(n = n, d = ___)$power))
+         actual_power = map_dbl(planned_n, \(n) pwr.t.test(n = n, d = .3)$power))
 
 mean(replications$actual_power)
+
+n_for_80(.8)
+n_for_80(.3)
 ```
 
 ```{r}
@@ -226,9 +243,14 @@ replications |>
 
 To do: Answer these questions.
 
-1.  Everyone claimed 80% power. What did they really have, on average?
+1.  Everyone claimed 80% power. What did they really have, on average? 
+> They really had an average of 20% power!!
+
 2.  How many participants per group would it have taken to have 80% power for the true effect? Compare that to `median(replications$planned_n)`.
+> The average number of participants per group would have been 176 for 80% power. The median would be 28 participants.
+
 3.  If one of these replications comes out non-significant, how much does that tell you?
+> It is hard to say since a non-significant result cannot tell us much about whether the original study had the true effect.
 
 # Part 4: Why you shouldn't power on your pilot
 
@@ -247,8 +269,13 @@ To do: Write this part yourself, following Part 3.
 ```{r}
 set.seed(4)
 
-# your code here
+pilot_data <- tibble(study = 1:2000) %>%
+  mutate(result = map(study, \(i) simulate_study(n_per_group = 10, true_d = 0.4))) %>%
+  unnest(result) %>%
+  mutate(go = d_hat > .2)
 
+hist(pilot_data$d_hat)
+mean(pilot_data$go)
 ```
 
 ```{r}
@@ -580,7 +607,7 @@ This is what you turn in. The goal is a **Power Analysis** section you can paste
 
 **1. Name your key test.** Which single test most directly captures the claim you're replicating or simulating? Write it here.
 
-*Your answer:*
+*Your answer:* XXX
 
 **2. Get an effect size.** If the paper doesn't report one, compute it with the conversions in Part 8c. Say which conversion you used, and for a within-subjects design, whether your effect is a d_z or a d_av (Part 8b).
 

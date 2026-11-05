@@ -469,7 +469,7 @@ d_from_t
 ```
 
 To do: Do the two numbers agree? Is your estimate .8? Why not?
-> Yes, both numbers are exactly the same. The Cohen's d estimate is .34, not .8, which is due to the sample size being quite low - around 40 participants total, which means 20 participants per group so the estimate is smaller. 
+> Yes, both numbers are exactly the same. The Cohen's d estimate is .34, not .8, which is due to the sampling error, which gives rise to an uncertain effect size.  
 
 ## 8b. Within-subjects designs: which d?
 
@@ -510,7 +510,10 @@ n_for_80(0.5) * 2 # total N for d = .5 in a between-groups design
 To do: Answer these questions.
 
 1.  How does d_z change as the correlation goes up? Why? (Hint: what happens to the SD of the difference scores when the two measurements move together?)
+> As the correlation increases, the d_z increases, meaning that the SD gets smaller, so when we divide the SD by the t statistic.
+
 2.  A paper reports "d = .5" for a within-subjects effect and doesn't say which d. Suppose it is really a d_z from measurements that correlate at .8, and you plug it into a power analysis for a *between-groups* replication. What goes wrong?
+> 
 
 ## 8c. From the numbers a paper reports
 

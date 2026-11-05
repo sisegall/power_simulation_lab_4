@@ -59,7 +59,7 @@ Before you touch any code, guess the power of each of these studies. Type your g
 | Two-group t-test | d = .8 | 36 | .70 | 0.65 |
 | Two-group t-test | d = .3 | 120 | .35 | 0.37 |
 | Correlation | r = .5 | 36 | .40 | 0.59 |
-| Correlation | r = .3 | 80 | .30 | 0.48 |
+| Correlation | r = .3 | 80 | .30 | 0.48 | 
 
 Now check them. **Watch out:** in `pwr.t.test()`, `n` means participants *per group*, not the total. This is the most common way to get a power analysis wrong, in `pwr` and in G\*Power. In `pwr.r.test()`, `n` is just the number of people.
 
@@ -453,8 +453,8 @@ n2 <- length(tea_first)
 To do: Fill in the blanks to compute d by hand.
 
 ```{r}
-pooled_sd <- sqrt(((n1 - 1) * var(milk) + (n2 - 1) * var(___)) / (n1 + n2 - 2))
-d_by_hand <- (mean(milk) - mean(tea_first)) / ___
+pooled_sd <- sqrt(((n1 - 1) * var(milk) + (n2 - 1) * var(tea_first)) / (n1 + n2 - 2))
+d_by_hand <- (mean(milk) - mean(tea_first)) / pooled_sd
 d_by_hand
 ```
 
@@ -464,11 +464,12 @@ To do: Compute d from the t statistic.
 
 ```{r}
 t_stat <- unname(t.test(milk, tea_first, var.equal = TRUE)$statistic)
-d_from_t <- t_stat * sqrt(___)
+d_from_t <- t_stat * sqrt(1/n1 + 1/n2)
 d_from_t
 ```
 
 To do: Do the two numbers agree? Is your estimate .8? Why not?
+> Yes, both numbers are exactly the same. The Cohen's d estimate is .34, not .8, which is due to the sample size being quite low - around 40 participants total, which means 20 participants per group so the estimate is smaller. 
 
 ## 8b. Within-subjects designs: which d?
 
@@ -497,8 +498,8 @@ set.seed(81)
 paired_check <- tibble(r = c(0.2, 0.5, 0.8)) |>
   mutate(data = map(r, \(this_r) make_paired_data(n = 5000, d_av = 0.5, r = this_r)),
          d_av = map_dbl(data, \(df) mean(df$after - df$before) / sqrt((var(df$before) + var(df$after)) / 2)),
-         d_z = map_dbl(data, \(df) mean(df$after - df$before) / ___),
-         n_paired = map_dbl(d_z, \(d) ceiling(pwr.t.test(d = d, power = .8, type = ___)$n))) |>
+         d_z = map_dbl(data, \(df) mean(df$after - df$before) / sd(df$after - df$before)),
+         n_paired = map_dbl(d_z, \(d) ceiling(pwr.t.test(d = d, power = .8, type = "paired" )$n))) |>
   select(-data)
 
 paired_check

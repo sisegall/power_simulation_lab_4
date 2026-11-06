@@ -510,10 +510,10 @@ n_for_80(0.5) * 2 # total N for d = .5 in a between-groups design
 To do: Answer these questions.
 
 1.  How does d_z change as the correlation goes up? Why? (Hint: what happens to the SD of the difference scores when the two measurements move together?)
-> As the correlation increases, the d_z increases, meaning that the SD gets smaller, so when we divide the SD by the t statistic.
+> As the correlation increases, the d_z increases, meaning that the SD gets smaller.
 
 2.  A paper reports "d = .5" for a within-subjects effect and doesn't say which d. Suppose it is really a d_z from measurements that correlate at .8, and you plug it into a power analysis for a *between-groups* replication. What goes wrong?
-> 
+> Then, you get a larger sample size n that you'd need to collect the data from! It's more participants than you need.
 
 ## 8c. From the numbers a paper reports
 
@@ -547,7 +547,34 @@ d1 <- 2.40 * sqrt(1 / 30 + 1 / 30)
 d1
 n_for_80(d1) # per group
 
-# your code here
+# 2.  F(1, df) comparing two groups 
+d2 = sqrt(6.25) * sqrt(1/40 + 1/40) # (√F) × √(1/n₁ + 1/n₂)
+d2
+n_for_80(d2) # per group
+
+# 3. Means and SDs and one SEM 
+# SD = SEM × √n
+stand_dev = 0.24 * sqrt(25)
+pooled_sd = sqrt(((25 - 1) * 1.1^2 + (25 - 1) * stand_dev^2) / (25 + 25 - 2))
+d3 = (mean(5.2) - mean(4.6)) /pooled_sd # d = (M₁ − M₂) / pooled SD
+d3
+n_for_80(d3)
+
+# 4. Correlation r
+# r is already an effect size: use `pwr.r.test(r = r, power = .8)`, where `n` is the total number of people. If you need d: d = 2r / √(1 − r²)
+d4 = 2*.25 / sqrt(1 - .25^2)
+d4
+pwr.r.test(r = .25, power = .8) # total N
+n_for_80(d4) # per group
+
+# 5. One-way ANOVA, F(df₁, df₂) 
+# partial η², the share of variance explained by condition, is F·df₁ / (F·df₁ + df₂). Then Cohen's f = √(η² / (1 − η²)), and use `pwr.anova.test(k = number of groups, f = f, power = .8)`, where `n` is per group
+# F(2, 87) = 4.10, p = .02
+partial_eta = 4.10 * 2 / (4.10 * 2 + 87)
+cohen_f = sqrt(partial_eta / (1 - partial_eta))
+cohen_f
+pwr.anova.test(k = 3, f = cohen_f, power = .8)
+# OR ceiling(pwr.anova.test(k = 3, f = cohen_f, power = .8)$n) # per group
 
 ```
 
@@ -556,7 +583,7 @@ A quick habit worth having: check that the numbers in a paper agree with each ot
 To do: Does the p-value in result 1 match its t?
 
 ```{r}
-2 * pt(-abs(___), df = ___)
+2 * pt(-abs(2.40), df = 58)
 ```
 
 ## 8d. How sure are you about that effect size?
@@ -578,13 +605,13 @@ To do: A paper reports d = .8 with 20 people per group, like a typical published
 ```{r}
 set.seed(82)
 
-d_ci(d = ___, n1 = ___, n2 = ___)
+d_ci(d = .8, n1 = 20, n2 = 20)
 
 sims <- tibble(study = 1:2000) |>
   mutate(result = map(study, \(i) simulate_study(n_per_group = 20, true_d = 0.8))) |>
   unnest(result)
 
-quantile(sims$d_hat, ___) # the middle 95%
+quantile(sims$d_hat, c(.025, .975)) # the middle 95%
 ```
 
 One way to use this is **safeguard power** (Perugini et al., 2014): instead of planning for the point estimate, plan for the lower end of a 60% CI around it.
@@ -592,18 +619,23 @@ One way to use this is **safeguard power** (Perugini et al., 2014): instead of p
 To do: Find the safeguard effect size and the sample size it asks for.
 
 ```{r}
-safeguard_d <- unname(d_ci(0.8, 20, 20, level = ___)["lower"])
+safeguard_d <- unname(d_ci(0.8, 20, 20, level = .60)["lower"])
 safeguard_d
 
 n_for_80(0.8) # planning on the published effect
-n_for_80(___) # safeguard power
+n_for_80(safeguard_d) # safeguard power
 ```
 
 To do: Answer these questions.
 
 1.  How wide is the 95% CI, compared with the effect itself? Does the simulation agree with the formula?
+> The confidence interval is super wide compared to the large effect, which means if we ran the study many times, 95% of the intervals would contain the true effect BUT because the interval is so wide, it's hard to know if the effect is on the smaller side (near 0.52) or not, so we cannot be as sure. The simulation does agree with the formula. 
+
 2.  How many more people does safeguard power ask for?
+> Around 20 participants more per group.
+
 3.  In Part 3, the true effect behind a published d of .8 was only .3. Does safeguard power fix that problem?
+> It can certainly help us be more cautious but does not entirely fix the problem.
 
 # Part 9: Your project
 

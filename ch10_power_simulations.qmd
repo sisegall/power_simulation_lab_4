@@ -643,7 +643,7 @@ This is what you turn in. The goal is a **Power Analysis** section you can paste
 
 **1. Name your key test.** Which single test most directly captures the claim you're replicating or simulating? Write it here.
 
-*Your answer:* XXX
+*Your answer:* *t* = 4.63 for ratings of trustworthiness on a scale from 1-7.
 
 **2. Get an effect size.** If the paper doesn't report one, compute it with the conversions in Part 8c. Say which conversion you used, and for a within-subjects design, whether your effect is a d_z or a d_av (Part 8b).
 
@@ -681,8 +681,39 @@ dz_ci(3.98 / sqrt(45), n = 45, level = .60) # safeguard d_z for the example abov
 ```
 
 ```{r}
-# your code here
+# my study replication
 
+# step 1: read in the original Study 2 data (Markowitz, 2024; OSF https://osf.io/64am3/)
+study2 <- read_csv("experimental_data_OSF.csv")
+glimpse(study2)
+
+# step 2: fit the paper's model to the real data
+# random intercepts for participant and stimulus, as in the paper's Study 2 analytic plan
+library(lmerTest)
+study2_fit <- lmer(trustworthy ~ text_type + (1 | stim) + (1 | ResponseId), data = study2)
+summary(study2_fit) # text_typesimple = 0.28, t = 4.63, matching the paper
+
+# step 3: effect sizes to plan for (in rating points on the 1-7 scale)
+original_effect <- fixef(study2_fit)["text_typesimple"] # 0.28 = difference between the simple (GPT) and complex (PNAS) means
+
+# safeguard: lower end of a 60% CI on the original effect
+confint(study2_fit, parm = "text_typesimple", level = .60) # lower end is about 0.23
+
+planned_effects <- c(half = 0.14,         # half the original effect (0.28 / 2), since published effects tend to be inflated
+                     three_quarter = 0.21, # 75% of the original effect (0.75 x 0.28), as in Camerer et al. (2018)
+                     safeguard = 0.23)     # safeguard power, from the 60% CI above
+
+# 2.5x the original N rule (Part 5)
+2.5 * n_distinct(study2$ResponseId) # 2.5 x 274 = 685 participants
+
+# power at the original N (274) for each planned effect
+library(simr)
+set.seed(93)
+for (this_effect in planned_effects) {
+  planned_fit <- study2_fit
+  fixef(planned_fit)["text_typesimple"] <- this_effect
+  print(powerSim(planned_fit, test = fixed("text_typesimple", "t"), nsim = 100, progress = FALSE))
+}
 ```
 
 **4. Make a power curve.** Pick the option that fits your key test.
@@ -748,6 +779,96 @@ ggplot(my_power_curve, aes(x = n, y = power)) +
 
 Start with `1:200` while you debug. Use more once it works. Check that your function gives power near .05 when you run it with `effect = 0`: if it doesn't, something is wrong with your simulation or your test.
 
+```{r}
+# my power curves: power at different sample sizes for each planned effect
+# (code adapted from the simr example in the Bonus section; Green & MacLeod, 2016)
+# this takes a few minutes; use nsim = 500 for the final numbers you report
+set.seed(94)
+
+my_breaks <- c(40, 60, 70, 80, 100, 150, 200, 300, 500, 700)
+
+my_curves <- map(planned_effects, \(this_effect) {
+  planned_fit <- study2_fit
+  fixef(planned_fit)["text_typesimple"] <- this_effect
+  bigger_fit <- extend(planned_fit, along = "ResponseId", n = 700)
+  powerCurve(bigger_fit, test = fixed("text_typesimple", "t"), along = "ResponseId",
+             breaks = my_breaks, nsim = 100, progress = FALSE)
+})
+
+# one table with power at each N for each planned effect
+my_power_table <- imap_dfr(my_curves, \(curve, name) {
+  summary(curve) |>
+    as_tibble() |>
+    mutate(planned_effect = name)
+})
+
+my_power_table |>
+  select(planned_effect, n_participants = nlevels, power = mean, lower, upper)
+
+# all three curves on one plot
+ggplot(my_power_table, aes(x = nlevels, y = mean, color = planned_effect)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = .8, linetype = "dashed") +
+  annotate("rect", xmin = 60, xmax = 80, ymin = 0, ymax = 1, alpha = .1) + # the 60-80 people I can recruit
+  ylim(0, 1) +
+  labs(x = "Number of participants (3 summaries each)", y = "Power",
+       color = "Planned effect")
+
+# sanity check: with no true effect, power should be near .05
+null_fit <- study2_fit
+fixef(null_fit)["text_typesimple"] <- 0
+powerSim(null_fit, test = fixed("text_typesimple", "t"), nsim = 100, progress = FALSE)
+```
+
+```{r}
+# power curves for MY design: 5 summaries per person (one from each of the 5 pairs,
+# each randomly the simple GPT or complex PNAS version), instead of the original's 3.
+# one_experiment() follows the Bonus section's one_lmm_experiment(), shaped like my study,
+# with the SDs taken from the model fit to the original data (study2_fit)
+study2_vc <- as.data.frame(VarCorr(study2_fit))
+sd_person <- study2_vc$sdcor[study2_vc$grp == "ResponseId"] # about 0.83
+sd_stim <- study2_vc$sdcor[study2_vc$grp == "stim"]         # 0 in the original data
+sd_trial <- sigma(study2_fit)                               # about 0.75
+baseline <- fixef(study2_fit)["(Intercept)"]                # complex (PNAS) mean, about 4.42
+
+one_experiment <- function(n, effect, n_summaries = 5) {
+  # n = total number of participants; effect = simple minus complex, in rating points
+  people <- tibble(ResponseId = 1:n, person_bump = rnorm(n, 0, sd_person))
+  stims <- tibble(stim = 1:n_summaries, stim_bump = rnorm(n_summaries, 0, sd_stim))
+  trials <- people |>
+    cross_join(stims) |>
+    mutate(simple = rbinom(n(), 1, 0.5), # each summary randomly GPT (1) or PNAS (0)
+           trustworthy = baseline + person_bump + stim_bump + effect * simple +
+             rnorm(n(), 0, sd_trial))
+  fit <- suppressMessages(lmer(trustworthy ~ simple + (1 | stim) + (1 | ResponseId), data = trials))
+  summary(fit)$coefficients["simple", "Pr(>|t|)"]
+}
+
+set.seed(95)
+
+# sanity check: with no true effect, power should be near .05
+mean(map_dbl(1:200, \(i) one_experiment(100, effect = 0)) < .05)
+
+# this takes a few minutes; use more than 100 simulations for the final numbers you report
+my_power_curve <- expand_grid(planned_effect = names(planned_effects),
+                              n = c(40, 60, 80, 100, 150, 200, 300)) |>
+  mutate(power = map2_dbl(planned_effect, n, \(this_effect, this_n)
+    mean(map_dbl(1:500, \(i) one_experiment(this_n, effect = planned_effects[[this_effect]])) < .05)))
+
+my_power_curve
+
+ggplot(my_power_curve, aes(x = n, y = power, color = planned_effect)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = .8, linetype = "dashed") +
+  annotate("rect", xmin = 100, xmax = 150, ymin = 0, ymax = 1, alpha = .1) + # my target: 100-150 people
+  ylim(0, 1) +
+  labs(x = "Number of participants (5 summaries each)", y = "Power",
+       color = "Planned effect")
+ggsave("power_curve.png")
+```
+
 **5. Write the justification.** One paragraph with your numbers, in the style of Part 6: your goal, your constraint, your planned N, and what that N can and can't detect. This goes in the Power Analysis section of your report, and it's a draft of the sampling plan for your preregistration.
 
 Your numbers from step 3 will probably disagree, and the most cautious one may be more people than you can get. That's normal. You don't have to run the largest N. Say what N you will actually run and why, then say what that N is powered for under each approach. If it falls short of what your planned effect needs, say so plainly and lean on the sensitivity analysis. "This is the N we could get, and here is what it can detect" is an honest justification (Lakens, 2022, calls it a resource constraint). What isn't honest is choosing an effect size after the fact so that your N looks powered.
@@ -756,7 +877,9 @@ Here is an example for a replication, where the original study had 20 people per
 
 > The original study (N = 40) reported d = .80. Because published effects tend to be inflated, we planned for half that effect, d = .40, which needs 100 participants per group for 80% power. That is more than we can recruit this quarter, so we will run 60 per group (N = 120). This is 3 times the original sample, which gives more than 80% power to reject d33 = .50, the effect the original study had 33% power to detect (Simonsohn, 2015). It also gives 80% power for effects of d = .52 or larger. A non-significant result would tell us whether the effect is as large as the original study could have detected, but not whether there is a smaller effect, below about d = .5.
 
-*Your paragraph:*
+*Your paragraph:* 
+> The original study (N = 274 participants, 3 summaries each) found that GPT summaries were rated as more trustworthy than PNAS summaries by 0.28 points on a 7-point scale (linear mixed model with random intercepts for participant and stimulus, t = 4.63). Because published effects tend to be inflated, I planned for three smaller effects: safeguard power, the lower end of a 60% confidence interval on the original effect (0.23 points); 75% of the original effect (0.21 points); and half of the original effect (0.14 points). I simulated my own design, in which each participant rates 5 summaries, using the participant and random variability from the original data. The 2.5× rule (Simonsohn, 2015) would call for 685 participants, which is more than we can recruit this quarter, so we will aim to run at least 100 participants, and up to 150 if recruitment allows. With 100 participants, our simulations give about 83% power for the safeguard effect, 76% for 75% of the original effect, and 38% for half of it. With 150 participants, these rise to about 99%, 93%, and 62%, respectively. This means 100 participants can reliably detect an effect of about 0.23 points or larger. A non-significant result would tell us the effect is likely smaller than this, but could not rule out a smaller effect, such as half the original (0.14 points).
+
 
 **To submit:** commit and push, then submit your repository link on Canvas with your power curve figure and your paragraph. To save the figure as a file, run `ggsave("power_curve.png")` in the Console right after making the plot, or right-click the figure in your rendered HTML and save it.
 
